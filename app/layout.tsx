@@ -2,37 +2,43 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { getSiteUrl, site } from "@/data/site";
 import "@/styles/globals.css";
-const sans = localFont({
+
+// Both families render the first viewport, so both stay preloaded.
+const instrumentSans = localFont({
   src: "../public/fonts/instrument-sans.woff2",
-  variable: "--font-sans",
+  variable: "--font-instrument-sans",
   weight: "400 600",
   display: "swap",
+  fallback: ["Arial", "sans-serif"],
 });
-const serif = localFont({
+const instrumentSerif = localFont({
   src: "../public/fonts/instrument-serif-italic.woff2",
-  variable: "--font-serif",
+  variable: "--font-instrument-serif",
   weight: "400",
   style: "italic",
   display: "swap",
+  fallback: ["Georgia", "Times New Roman", "serif"],
+  adjustFontFallback: "Times New Roman",
 });
+
 const origin = getSiteUrl();
+const title = `${site.name} — ${site.role}`;
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#ffffff",
+  colorScheme: "light",
 };
+
 export const metadata: Metadata = {
   metadataBase: new URL(origin ?? "http://localhost:3100"),
-  ...(origin
-    ? { metadataBase: new URL(origin), alternates: { canonical: "/" } }
-    : {}),
-  title: {
-    default: "Ashik Rabbani — Independent Designer",
-    template: "%s — Ashik Rabbani",
-  },
+  ...(origin ? { alternates: { canonical: "/" } } : {}),
+  title: { default: title, template: `%s — ${site.name}` },
   description: site.description,
   openGraph: {
-    title: "Ashik Rabbani — Independent Designer",
+    title,
     description: site.description,
     type: "website",
     locale: "en_US",
@@ -45,7 +51,7 @@ export const metadata: Metadata = {
               url: "/opengraph-image",
               width: 1200,
               height: 630,
-              alt: "Ashik Rabbani — Visual Designer",
+              alt: `${site.name} — Visual Designer`,
             },
           ],
         }
@@ -53,16 +59,20 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ashik Rabbani — Independent Designer",
+    title,
     description: site.description,
   },
 };
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="[--safe-start:env(safe-area-inset-left)] [--safe-end:env(safe-area-inset-right)] [--safe-top:env(safe-area-inset-top)] [--safe-bottom:env(safe-area-inset-bottom)]">
-      <body className={`${sans.variable} ${serif.variable} [text-size-adjust:100%] [-webkit-text-size-adjust:100%]`}>{children}</body>
+    <html
+      lang="en"
+      className={`${instrumentSans.variable} ${instrumentSerif.variable}`}
+    >
+      <body>{children}</body>
     </html>
   );
 }

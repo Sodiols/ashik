@@ -5,41 +5,95 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type KeyboardEvent,
+  type PointerEvent,
 } from "react";
-import type gsap from "gsap";
+import { useRouter } from "next/navigation";
+import type { gsap as GSAP } from "gsap";
 import { projects } from "@/data/projects";
-import { motion } from "@/animations/config";
+import {
+  duration,
+  ease,
+  railQuery,
+  reducedMotionQuery,
+  stageQuery,
+} from "@/animations/config";
+import {
+  exitFor,
+  planeFor,
+  swipeDirection,
+  visiblePlanes,
+  type DeckMode,
+} from "@/lib/deck";
+import { Arrow } from "./Arrow";
 import { ProjectCard } from "./ProjectCard";
 import { ProjectPagination } from "./ProjectPagination";
+
+type Mode = DeckMode | "rail";
+const last = projects.length - 1;
+const clampIndex = (index: number) => Math.max(0, Math.min(last, index));
+const readMode = (): Mode =>
+  matchMedia(railQuery).matches
+    ? "rail"
+    : matchMedia(stageQuery).matches
+      ? "stage"
+      : "compact";
+const position = (rank: number, mode: DeckMode) => {
+  const { xPercent, yPercent } = planeFor(rank, mode);
+  return { xPercent, yPercent };
+};
+
 export function ProjectStack() {
   const [active, setActive] = useState(0);
+  const [engineReady, setEngineReady] = useState(false);
+  const [modeVersion, setModeVersion] = useState(0);
   const root = useRef<HTMLDivElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const mode = useRef<Mode>("stage");
+  const engine = useRef<typeof GSAP | null>(null);
+  // Index of the latest request, ahead of React rendering it.
   const current = useRef(0);
-  const locked = useRef(false);
-  const lockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previous = useRef(0);
+  const busyUntil = useRef(0);
+  const railTarget = useRef<number | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
-  const engine = useRef<typeof gsap | null>(null);
-  const previous = useRef(0);
-  const [engineReady, setEngineReady] = useState(false);
+  const router = useRouter();
+  const prefetchActive = () => router.prefetch(`/work/${projects[current.current].slug}`);
+
+  // Layout mode: phone rail, compact deck or spatial stage deck.
+  useLayoutEffect(() => {
+    mode.current = readMode();
+    const queries = [matchMedia(railQuery), matchMedia(stageQuery)];
+    const update = () => {
+      const next = readMode();
+      if (next === mode.current) return;
+      mode.current = next;
+      setModeVersion((version) => version + 1);
+    };
+    queries.forEach((query) => query.addEventListener("change", update));
+    return () =>
+      queries.forEach((query) => query.removeEventListener("change", update));
+  }, []);
+
+  // GSAP is only needed for deck transitions; fetch it as the deck approaches.
   useEffect(() => {
     const element = root.current;
-    if (!element || matchMedia("(prefers-reduced-motion: reduce)").matches)
-      return;
+    if (!element || matchMedia(reducedMotionQuery).matches) return;
     let disposed = false;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
         import("gsap")
-          .then((module) => {
+          .then(({ gsap }) => {
             if (disposed) return;
-            engine.current = module.default;
-            element.dataset.motionReady = "true";
+            gsap.ticker.lagSmoothing(0);
+            engine.current = gsap;
             setEngineReady(true);
           })
           .catch(() => {
-            /* The CSS transform transition remains available. */
+            /* CSS keeps the deck usable without the transition engine. */
           });
       },
       { rootMargin: "200px" },
@@ -50,259 +104,278 @@ export function ProjectStack() {
       observer.disconnect();
     };
   }, []);
-  const select = useCallback((index: number) => {
-    if (
-      index < 0 ||
-      index >= projects.length ||
-      locked.current ||
-      index === current.current
-    )
-      return;
-    const reduceMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    locked.current = !reduceMotion;
-    setActive(index);
+
+  const select = useCallback((requested: number) => {
+    const index = clampIndex(requested);
+    if (index === current.current) return;
+    const list = track.current;
+    if (mode.current === "rail" && list) {
+      const card = list.children[index] as HTMLElement | undefined;
+      railTarget.current = index;
+      list.scrollTo({
+        left: card?.offsetLeft ?? 0,
+        behavior: matchMedia(reducedMotionQuery).matches ? "instant" : "smooth",
+      });
+    } else {
+      if (performance.now() < busyUntil.current) return;
+      if (engine.current && !matchMedia(reducedMotionQuery).matches)
+        busyUntil.current = performance.now() + duration.panel * 1000;
+    }
     current.current = index;
-    if (!reduceMotion)
-      lockTimer.current = setTimeout(() => {
-        locked.current = false;
-      }, motion.panel * 1000);
+    setActive(index);
   }, []);
+
+  // Deck planes. GSAP owns card transforms once loaded; CSS before that.
   useLayoutEffect(() => {
-    const element = root.current;
-    const surface = element?.querySelector<HTMLElement>(".project-stack-cards");
-    if (!element || !surface) return;
-    const cards = Array.from(surface.querySelectorAll<HTMLElement>(".project-card"));
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
+    const list = track.current;
+    if (!list) return;
+    const cards = Array.from(list.children) as HTMLElement[];
     const from = previous.current;
     previous.current = active;
-    let width = surface.clientWidth;
-    let height = surface.clientHeight;
-    const rankOf = (index: number) => index - active;
-    const position = (rank: number) => ({
-      x: Math.max(0, Math.min(rank, 3)) * width * 0.12,
-      y: Math.max(0, Math.min(rank, 3)) * height * -0.162,
-      filter: `blur(${Math.max(0, Math.min(rank, 3)) * 1.8}px)`,
-    });
     const gsap = engine.current;
-    const settle = () => {
-      cards.forEach((card, i) => {
-        const rank = rankOf(i);
-        if (gsap) {
-          gsap.set(card, { ...position(rank), autoAlpha: rank >= 0 && rank < 3 ? 1 : 0, zIndex: 10 - rank });
-        } else {
-          // CSS owns the same geometry when motion is disabled or unavailable.
-          card.style.removeProperty("transform");
-          card.style.removeProperty("filter");
-          card.style.removeProperty("opacity");
-          card.style.removeProperty("visibility");
-          card.style.removeProperty("z-index");
-        }
-      });
-    };
-    let timeline: gsap.core.Timeline | null = null;
-    if (!gsap || reduced || from === active) {
-      settle();
-    } else {
-      const forward = active > from;
-      const outgoing = cards[from];
-      const incoming = cards[active];
-      timeline = gsap.timeline({ onComplete: settle });
-      if (forward) {
-        // Keep the old front plane above the deck until it has left the viewport.
-        gsap.set(outgoing, { autoAlpha: 1, zIndex: 20 });
-        timeline.to(outgoing, {
-          x: width * 1.15,
-          y: height * -0.105,
-          filter: "blur(1.8px)",
-          duration: motion.panel,
-          ease: "power3.inOut",
-        }, 0);
-      } else {
-        // Reverse the same path: the previous panel returns from the right.
-        gsap.set(incoming, { x: width * 1.15, y: height * -0.105, filter: "blur(1.8px)", autoAlpha: 1, zIndex: 20 });
-        timeline.to(incoming, { ...position(0), duration: motion.panel, ease: "power3.inOut" }, 0);
-      }
-      cards.forEach((card, i) => {
-        if ((forward && i === from) || (!forward && i === active)) return;
-        const rank = rankOf(i);
-        if (rank < 0 || rank >= 3) {
-          if (!forward && i === from) {
-            timeline!.to(card, { ...position(3), duration: motion.panel, ease: "power3.inOut" }, 0);
-          } else gsap.set(card, { autoAlpha: 0, zIndex: 10 - rank });
-          return;
-        }
-        const oldRank = i - from;
-        if (forward && rank === 2 && oldRank >= 3) {
-          // Reveal a new rear plane only as the departing front clears the deck.
-          gsap.set(card, { ...position(3), autoAlpha: 0, zIndex: 8 });
-          timeline!.set(card, { autoAlpha: 1 }, motion.panel * 0.78);
-          timeline!.to(card, { ...position(2), duration: motion.panel * 0.22, ease: "power1.out" }, motion.panel * 0.78);
-          return;
-        }
-        if (oldRank < 0 || oldRank >= 3) gsap.set(card, { ...position(rank + 1), autoAlpha: 1 });
-        gsap.set(card, { autoAlpha: 1, zIndex: 10 - rank });
-        timeline!.to(card, { ...position(rank), duration: motion.panel - 0.06, ease: "power3.inOut" }, 0.06);
-      });
+    const deck = mode.current;
+    if (deck === "rail") {
+      gsap?.set(cards, { clearProps: "transform,opacity,visibility,zIndex" });
+      const card = cards[active];
+      if (card && Math.abs(list.scrollLeft - card.offsetLeft) > 2 && railTarget.current === null)
+        list.scrollLeft = card.offsetLeft;
+      return;
     }
-    const resize = new ResizeObserver(() => {
-      if (width === surface.clientWidth && height === surface.clientHeight) return;
-      timeline?.progress(1);
-      width = surface.clientWidth;
-      height = surface.clientHeight;
+    if (!gsap) return;
+    // GSAP folds the CSS fallback translate into x/y; ownership uses percentages only.
+    gsap.set(cards, { x: 0, y: 0 });
+    const settle = () =>
+      cards.forEach((card, i) => gsap.set(card, planeFor(i - active, deck)));
+    if (from === active || matchMedia(reducedMotionQuery).matches) {
       settle();
+      return;
+    }
+    const forward = active > from;
+    const exit = exitFor(deck);
+    const timeline = gsap.timeline({
+      defaults: { duration: duration.panel, ease: ease.inOut },
+      onComplete: settle,
     });
-    resize.observe(surface);
+    if (forward) {
+      // The old front plane leaves to the right, above the advancing deck.
+      gsap.set(cards[from], { autoAlpha: 1, zIndex: 20 });
+      timeline.to(cards[from], exit, 0);
+    } else {
+      // Reverse path: the previous plane returns from the right.
+      gsap.set(cards[active], { ...exit, autoAlpha: 1, zIndex: 20 });
+      timeline.to(cards[active], position(0, deck), 0);
+    }
+    cards.forEach((card, i) => {
+      if (i === (forward ? from : active)) return;
+      const rank = i - active;
+      const oldRank = i - from;
+      const wasVisible = oldRank >= 0 && oldRank < visiblePlanes;
+      if (rank < 0 || rank >= visiblePlanes) {
+        if (wasVisible)
+          timeline.to(card, { ...position(visiblePlanes, deck), autoAlpha: 0 }, 0);
+        else gsap.set(card, { autoAlpha: 0, zIndex: 10 - rank });
+        return;
+      }
+      gsap.set(card, { zIndex: 10 - rank });
+      if (!wasVisible) {
+        // A new rear plane fades in as the departing front clears the deck.
+        gsap.set(card, { ...position(visiblePlanes, deck), autoAlpha: 0 });
+        timeline.to(
+          card,
+          { ...position(rank, deck), autoAlpha: 1, duration: duration.panel * 0.45, ease: ease.out },
+          duration.panel * 0.55,
+        );
+        return;
+      }
+      gsap.set(card, { autoAlpha: 1 });
+      timeline.to(card, { ...position(rank, deck), duration: duration.panel - 0.06 }, 0.06);
+    });
     return () => {
-      resize.disconnect();
-      timeline?.kill();
+      timeline.kill();
     };
-  }, [active, engineReady]);
+  }, [active, engineReady, modeVersion]);
+
+  // Rail: native scroll-snap drives the active card.
+  useEffect(() => {
+    const list = track.current;
+    if (!list) return;
+    let frame = 0;
+    let step = 0;
+    const measure = () => {
+      const [first, second] = list.children as unknown as HTMLElement[];
+      step = second && first ? second.offsetLeft - first.offsetLeft : list.clientWidth;
+    };
+    const sync = () => {
+      frame = 0;
+      if (mode.current !== "rail" || !step) return;
+      const index = clampIndex(Math.round(list.scrollLeft / step));
+      if (railTarget.current !== null) {
+        if (index !== railTarget.current) return;
+        railTarget.current = null;
+      }
+      if (index === current.current) return;
+      current.current = index;
+      setActive(index);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(sync);
+    };
+    const release = () => {
+      railTarget.current = null;
+    };
+    const resize = new ResizeObserver(measure);
+    resize.observe(list);
+    list.addEventListener("scroll", onScroll, { passive: true });
+    list.addEventListener("touchstart", release, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      resize.disconnect();
+      list.removeEventListener("scroll", onScroll);
+      list.removeEventListener("touchstart", release);
+    };
+  }, []);
+
+  // Desktop wheel: owned only while the pinned Work scene is showing, and
+  // released immediately at the first and last project.
   useEffect(() => {
     const element = root.current;
-    if (!element) return;
+    const stage = element?.closest<HTMLElement>(".experience");
+    if (!element || !stage) return;
     let accumulated = 0;
     let lastWheel = 0;
     const wheel = (event: WheelEvent) => {
-      if (window.matchMedia("(width < 900px), (pointer: coarse)").matches)
-        return;
-      const stage = document.querySelector<HTMLElement>(".experience");
-      if (
-        stage?.dataset.scene !== "work" ||
-        (element.closest(".selected-work")?.getBoundingClientRect().top ?? 0) < -1
-      ) return;
+      if (mode.current !== "stage" || stage.dataset.scene !== "work") return;
       const delta =
-        Math.abs(event.deltaX) > Math.abs(event.deltaY)
-          ? event.deltaX
-          : event.deltaY;
-      const direction = delta > 0 ? 1 : -1;
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      const direction = Math.sign(delta);
       if (
+        !direction ||
         (current.current === 0 && direction < 0) ||
-        (current.current === projects.length - 1 && direction > 0)
+        (current.current === last && direction > 0)
       )
         return;
       event.preventDefault();
-      if (locked.current) return;
+      if (performance.now() < busyUntil.current) return;
       const now = performance.now();
       if (now - lastWheel > 150) accumulated = 0;
       lastWheel = now;
       accumulated += delta;
       if (Math.abs(accumulated) > 65) {
-        select(current.current + (accumulated > 0 ? 1 : -1));
         accumulated = 0;
+        select(current.current + direction);
       }
     };
     element.addEventListener("wheel", wheel, { passive: false });
-    return () => {
-      element.removeEventListener("wheel", wheel);
-      if (lockTimer.current) clearTimeout(lockTimer.current);
-      locked.current = false;
-    };
+    return () => element.removeEventListener("wheel", wheel);
   }, [select]);
-  const keyDown = (event: React.KeyboardEvent) => {
-    if ((event.target as HTMLElement).matches("input,textarea,select")) return;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      event.preventDefault();
-      select(active + 1);
-    }
-    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      event.preventDefault();
-      select(active - 1);
-    }
-    if (event.key === "Home") {
-      event.preventDefault();
-      select(0);
-    }
-    if (event.key === "End") {
-      event.preventDefault();
-      select(projects.length - 1);
-    }
+
+  const keyDown = (event: KeyboardEvent) => {
+    const keys: Record<string, number> = {
+      ArrowRight: current.current + 1,
+      ArrowDown: current.current + 1,
+      ArrowLeft: current.current - 1,
+      ArrowUp: current.current - 1,
+      Home: 0,
+      End: last,
+    };
+    if (!(event.key in keys)) return;
+    event.preventDefault();
+    select(keys[event.key]);
   };
+
+  // Deck swipe and mouse drag. Vertical movement stays with the page
+  // (touch-action: pan-y); the rail scrolls natively instead.
+  const pointerDown = (event: PointerEvent) => {
+    suppressClick.current = false;
+    drag.current = null;
+    if (mode.current === "rail" || (event.target as Element).closest("button")) return;
+    drag.current = { x: event.clientX, y: event.clientY };
+  };
+  const pointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    const dx = event.clientX - drag.current.x;
+    const dy = event.clientY - drag.current.y;
+    // Finish horizontal drags even when the pointer leaves the cropped deck.
+    if (swipeDirection(dx, dy) && !event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const pointerUp = (event: PointerEvent) => {
+    if (!drag.current) return;
+    const direction = swipeDirection(
+      event.clientX - drag.current.x,
+      event.clientY - drag.current.y,
+    );
+    drag.current = null;
+    if (!direction) return;
+    suppressClick.current = true;
+    select(current.current + direction);
+  };
+
+  const project = projects[active];
   return (
     <div
-      className="project-stack"
       ref={root}
+      className="project-stack relative mt-12 w-full outline-offset-[18px] [--deck-h:calc(var(--wu)*32)] sm:mt-[calc(var(--deck-flow-h)*0.22+2.5rem)] sm:h-(--deck-flow-h) sm:touch-pan-y sm:[--deck-flow-h:clamp(300px,65vw,520px)] sm:short:[--deck-flow-h:clamp(220px,min(60vw,66svh),420px)] stage:absolute stage:top-[clamp(calc(var(--header-h)+var(--deck-h)*0.34+1rem),41.7%,calc(100%-var(--deck-h)-4.5rem))] stage:left-[48.8%] stage:mt-0 stage:h-(--deck-h) stage:w-[max(calc(var(--wu)*70),60vw)]"
       role="region"
       aria-roledescription="carousel"
       aria-label="Project layouts"
       tabIndex={0}
       onKeyDown={keyDown}
-      onPointerDown={(e) => {
-        suppressClick.current = false;
-        if ((e.target as Element).closest("button")) return;
-        drag.current = { x: e.clientX, y: e.clientY };
-      }}
-      onPointerMove={(e) => {
-        if (!drag.current) return;
-        const dx = e.clientX - drag.current.x;
-        const dy = e.clientY - drag.current.y;
-        if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
-          // Finish horizontal drags even when the pointer leaves the cropped deck.
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }
-      }}
-      onPointerUp={(e) => {
-        if (!drag.current) return;
-        const dx = e.clientX - drag.current.x;
-        const dy = e.clientY - drag.current.y;
-        drag.current = null;
-        if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) {
-          suppressClick.current = true;
-          select(active + (dx < 0 ? 1 : -1));
-        }
-      }}
+      onPointerEnter={prefetchActive}
+      onFocus={prefetchActive}
+      onPointerDown={pointerDown}
+      onPointerMove={pointerMove}
+      onPointerUp={pointerUp}
       onPointerCancel={() => {
         drag.current = null;
       }}
-      onClickCapture={(e) => {
-        if (suppressClick.current) {
-          e.preventDefault();
-          e.stopPropagation();
-          suppressClick.current = false;
-        }
+      onClickCapture={(event) => {
+        if (!suppressClick.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClick.current = false;
       }}
     >
-      <div className="project-stack-cards">
-        {projects.map((project, i) => (
+      <div
+        ref={track}
+        className="project-stack-cards relative h-full max-sm:-mr-(--gutter) max-sm:flex max-sm:h-auto max-sm:snap-x max-sm:snap-mandatory max-sm:gap-3 max-sm:overflow-x-auto max-sm:overscroll-x-contain max-sm:pr-(--gutter) max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
+      >
+        {projects.map((item, i) => (
           <ProjectCard
-            key={project.slug}
-            project={project}
-            active={i === active}
-            position={i - active}
+            key={item.slug}
+            project={item}
+            index={i}
+            total={projects.length}
+            rank={i - active}
           />
         ))}
       </div>
-      <div className="stack-controls flex items-center justify-center max-[360px]:left-0 max-[360px]:w-full max-[360px]:transform-none max-[360px]:gap-2 [@media(min-width:900px)_and_(min-height:600px)]:top-[calc(100%-10px-var(--safe-bottom))]">
-        <ProjectPagination
-          projects={projects}
-          active={active}
-          onSelect={select}
-        />
-        <div className="stack-arrows flex gap-[15px] max-[900px]:gap-2 max-[360px]:static min-[900px]:max-[1023px]:left-[calc(100%+4px)] [@media(any-pointer:coarse)]:opacity-100 [@media(any-pointer:coarse)]:gap-4">
+      <div className="stack-controls relative z-30 mt-6 flex items-center justify-center gap-2 xs:gap-4 stage:absolute stage:top-[calc(100%+0.25rem)] stage:left-0 stage:mt-0 stage:w-[calc(51.2vw-var(--gutter))] stage:justify-start stage:gap-0">
+        <ProjectPagination projects={projects} active={active} onSelect={select} />
+        <div className="flex gap-2 xs:gap-3 stage:ml-auto stage:gap-[15px]">
           <button
-            className="tap-target"
-            onClick={() => select(active - 1)}
+            className="tap-target flex size-9 items-center justify-center rounded-full border border-line text-[20px] transition-colors duration-200 hover:not-disabled:bg-ink hover:not-disabled:text-white disabled:opacity-25 coarse:size-10"
+            type="button"
+            onClick={() => select(current.current - 1)}
             disabled={active === 0}
             aria-label="Previous project"
           >
-            ←
+            <Arrow direction="left" />
           </button>
           <button
-            className="tap-target"
-            onClick={() => select(active + 1)}
-            disabled={active === projects.length - 1}
+            className="tap-target flex size-9 items-center justify-center rounded-full border border-line text-[20px] transition-colors duration-200 hover:not-disabled:bg-ink hover:not-disabled:text-white disabled:opacity-25 coarse:size-10"
+            type="button"
+            onClick={() => select(current.current + 1)}
+            disabled={active === last}
             aria-label="Next project"
           >
-            →
+            <Arrow direction="right" />
           </button>
         </div>
       </div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
-        Project {active + 1} of {projects.length}: {projects[active].title},{" "}
-        {projects[active].category}. {projects[active].placeholder ? "Independent design study." : ""}
+        Project {active + 1} of {projects.length}: {project.title}, {project.category}.
+        {project.placeholder ? " Independent design study." : ""}
       </p>
     </div>
   );

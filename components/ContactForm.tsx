@@ -7,6 +7,7 @@ import {
 } from "@/lib/contact";
 import { ProjectTypeSelect } from "./ProjectTypeSelect";
 import { ContactSuccess } from "./ContactSuccess";
+import { Arrow } from "./Arrow";
 type SubmissionState = "idle" | "submitting" | "success" | "error";
 const empty: ContactValues = {
   name: "",
@@ -181,6 +182,8 @@ export function ContactForm({ onComplete }: { onComplete: (complete: boolean) =>
         requestAnimationFrame(() => form.current?.querySelector<HTMLElement>("#name")?.focus());
       }} />
     );
+  const field = "form-field relative mb-7 min-w-0 sm:mb-8";
+  const label = "mb-3 block text-nano font-medium tracking-label text-muted";
   return (
     <form
       className="contact-form"
@@ -198,70 +201,76 @@ export function ContactForm({ onComplete }: { onComplete: (complete: boolean) =>
         value="New project enquiry — Ashik Rabbani"
       />
       <noscript>
-        <p className="form-feedback">
+        <p className="mb-6 text-[12px] leading-[1.6]">
           Enable JavaScript for inline validation and submission updates.
         </p>
       </noscript>
-      <div className="form-row grid grid-cols-1 gap-0">
-        <div className="form-field min-w-0">
-          <label htmlFor="name">YOUR NAME</label>
-          <input
-            id="name"
-            name="name"
-            autoComplete="name"
-            required
-            minLength={2}
-            maxLength={100}
-            value={values.name}
-            onChange={(e) => update("name", e.target.value)}
-            aria-invalid={!!errors.name}
-            aria-describedby={errors.name ? "name-error" : undefined}
-            placeholder="Name"
-          />
-          {errors.name && (
-            <p className="field-error" id="name-error">
-              {errors.name}
-            </p>
-          )}
-        </div>
-        <div className="form-field min-w-0">
-          <label htmlFor="email">EMAIL ADDRESS</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            maxLength={254}
-            value={values.email}
-            onChange={(e) => update("email", e.target.value)}
-            aria-invalid={!!errors.email}
-            aria-describedby={errors.email ? "email-error" : undefined}
-            placeholder="you@example.com"
-          />
-          {errors.email && (
-            <p className="field-error" id="email-error">
-              {errors.email}
-            </p>
-          )}
-        </div>
+      <div className={field}>
+        <label className={label} htmlFor="name">YOUR NAME</label>
+        <input
+          className="field-control"
+          id="name"
+          name="name"
+          autoComplete="name"
+          required
+          minLength={2}
+          maxLength={100}
+          value={values.name}
+          onChange={(e) => update("name", e.target.value)}
+          aria-invalid={!!errors.name}
+          aria-describedby={errors.name ? "name-error" : undefined}
+          placeholder="Name"
+        />
+        {errors.name && (
+          <p className="field-error mt-2 text-ui text-deep" id="name-error">
+            {errors.name}
+          </p>
+        )}
       </div>
-      <div className="form-field">
-        <label id="project-type-label" htmlFor="projectType">WHAT ARE YOU THINKING?</label>
+      <div className={field}>
+        <label className={label} htmlFor="email">EMAIL ADDRESS</label>
+        <input
+          className="field-control"
+          id="email"
+          name="email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          autoCapitalize="none"
+          spellCheck={false}
+          required
+          maxLength={254}
+          value={values.email}
+          onChange={(e) => update("email", e.target.value)}
+          aria-invalid={!!errors.email}
+          aria-describedby={errors.email ? "email-error" : undefined}
+          placeholder="you@example.com"
+        />
+        {errors.email && (
+          <p className="field-error mt-2 text-ui text-deep" id="email-error">
+            {errors.email}
+          </p>
+        )}
+      </div>
+      <div className={`${field} has-[[data-open=true]]:z-[3]`}>
+        <label className={label} id="project-type-label" htmlFor="projectType">
+          WHAT ARE YOU THINKING?
+        </label>
         <ProjectTypeSelect
           value={values.projectType}
           onChange={(value) => update("projectType", value)}
           error={errors.projectType}
         />
         {errors.projectType && (
-          <p className="field-error" id="type-error">
+          <p className="field-error mt-2 text-ui text-deep" id="type-error">
             {errors.projectType}
           </p>
         )}
       </div>
-      <div className="form-field">
-        <label htmlFor="message">A LITTLE ABOUT YOUR PROJECT</label>
+      <div className={field}>
+        <label className={label} htmlFor="message">A LITTLE ABOUT YOUR PROJECT</label>
         <textarea
+          className="field-control"
           id="message"
           name="message"
           required
@@ -275,12 +284,12 @@ export function ContactForm({ onComplete }: { onComplete: (complete: boolean) =>
           placeholder="Tell me what you have in mind…"
         />
         {errors.message && (
-          <p className="field-error" id="message-error">
+          <p className="field-error mt-2 text-ui text-deep" id="message-error">
             {errors.message}
           </p>
         )}
       </div>
-      <div className="honeypot" aria-hidden="true">
+      <div className="hidden" aria-hidden="true">
         <label htmlFor="botcheck">Leave this field empty</label>
         <input
           id="botcheck"
@@ -290,22 +299,22 @@ export function ContactForm({ onComplete }: { onComplete: (complete: boolean) =>
           autoComplete="off"
         />
       </div>
-      <div className="form-submit-row flex items-center justify-between gap-5">
-        <span className="form-note">
+      <div className="form-submit-row flex flex-wrap items-center justify-between gap-x-5 gap-y-4">
+        <span className="text-ui leading-[1.55] text-muted">
           A good conversation
           <br />
           is a good place to start.
         </span>
         <button
-          className="send-button tap-target"
+          className="send-button tap-target flex items-center gap-7 border-b border-ink py-3 text-ui font-medium disabled:opacity-50 sm:gap-10"
           type="submit"
           disabled={status === "submitting"}
         >
           {status === "submitting" ? "SENDING…" : "SEND MESSAGE"}
-          <span aria-hidden="true">↗</span>
+          <Arrow direction="up-right" className="text-[26px]" />
         </button>
       </div>
-      <div className="form-feedback" role="status" aria-live="polite">
+      <div className="form-feedback mt-5 min-h-9 text-[12px] leading-[1.6]" role="status" aria-live="polite">
         {status === "error" && <p>{failure}</p>}
       </div>
     </form>

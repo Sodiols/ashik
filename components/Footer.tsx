@@ -1,30 +1,52 @@
+import Link from "next/link";
 import { site } from "@/data/site";
-export function Footer({ isHome = false }: { isHome?: boolean }) {
+import { Arrow } from "./Arrow";
+
+export function Footer({ home = false }: { home?: boolean }) {
+  const links = [
+    ...site.socials,
+    ...(site.email ? [{ label: "Email", url: `mailto:${site.email}` }] : []),
+  ];
+  const wordmark =
+    "tap-target text-[10px] font-semibold tracking-tight whitespace-nowrap sm:text-[12px]";
   return (
-    <footer className="footer flex flex-wrap items-center gap-[30px] pb-[max(32px,var(--safe-bottom))] max-[600px]:justify-between max-[600px]:gap-5">
-      <a
-        className="wordmark tap-target inline-flex items-center"
-        href={isHome ? "#home" : "/"}
+    <footer className="footer defer-render flex [--render-estimate:80px] flex-wrap items-center gap-x-8 gap-y-4 border-t border-line bg-light px-(--gutter) pt-6 pb-[max(2rem,var(--safe-bottom))]">
+      {home ? (
+        <a className={wordmark} href="#home">
+          {site.name.toUpperCase()}
+        </a>
+      ) : (
+        <Link className={wordmark} href="/">
+          {site.name.toUpperCase()}
+        </Link>
+      )}
+      {links.length > 0 && (
+        <ul className="order-last flex basis-full gap-6 text-ui sm:order-none sm:ml-auto sm:basis-auto">
+          {links.map((link) => (
+            <li key={link.label}>
+              <a
+                className="tap-target"
+                href={link.url}
+                {...(link.url.startsWith("http")
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+              >
+                {link.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      <span
+        className={`micro ml-auto whitespace-nowrap text-muted ${links.length > 0 ? "sm:ml-0" : ""}`}
       >
-        ASHIK RABBANI
-      </a>
-      <div className="footer-links flex gap-6">
-        {site.socials.map((s) => (
-          <a
-            className="tap-target"
-            key={s.label}
-            href={s.url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {s.label}
-          </a>
-        ))}
-        {site.email && <a className="tap-target" href={`mailto:${site.email}`}>Email</a>}
-      </div>
-      <span className="micro">© {new Date().getFullYear()} ASHIK RABBANI</span>
-      <a className="footer-top micro tap-target" href={isHome ? "#home" : "/#home"}>
-        BACK TO TOP <span aria-hidden="true">↑</span>
+        © {new Date().getFullYear()} {site.name.toUpperCase()}
+      </span>
+      <a
+        className="micro tap-target hidden items-center gap-5 md:inline-flex"
+        href={home ? "#home" : "/#home"}
+      >
+        BACK TO TOP <Arrow direction="up" className="text-[22px]" />
       </a>
     </footer>
   );

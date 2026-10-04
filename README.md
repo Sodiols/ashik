@@ -21,6 +21,14 @@ npm audit
 npm run start -- --port 3100
 ```
 
+Browser QA (needs Playwright and its browsers, which are deliberately not project dependencies):
+
+```powershell
+$env:PLAYWRIGHT = "<path to node_modules/playwright>"
+node scripts/qa-browser.cjs chrome   # 24 viewports: layout, navigation, deck, swipe, form
+node scripts/qa-states.cjs chrome    # rotation, reduced motion, zoom, early navigation, routes, 404
+```
+
 Stop the development server before starting production on the same port. Tests use Node's native TypeScript support and require Node.js 22.18+ (or Node.js 24).
 
 ## Before launch
@@ -34,17 +42,29 @@ Stop the development server before starting production on the same port. Tests u
 
 ## Architecture
 
-- `components/Portfolio.tsx` and `animations/experience.ts`: one continuous sticky stage when the viewport is at least 900 × 600 CSS pixels, lazy-loaded GSAP scroll timeline, section navigation and cleanup. Narrow and short landscape views use native scrolling. Motion stays deferred until needed; section clicks prepare it before scrolling so initialization cannot interrupt navigation. Reduced motion keeps content still.
-- `animations/sections.ts`: oversized About typography, sequential discipline reveals and the final word transforming into Contact. Independent card surfaces separate rear planes before the front while the deck keeps ownership of its transforms. Work atmosphere dissolves into About's passing light; Contact finishes on an almost white canvas. Form rows settle permanently on first interaction. Media-query cleanup restores native layouts and reduced-motion visibility.
-- `components/OpticalLens.tsx`: pointer interpolation, clipped magnified type, restrained vertical stretching, grayscale rim, subtle environment parallax. No WebGL. Touch and reduced motion disable the lens; the native pointer remains available.
-- `components/ProjectStack.tsx`: measured lower-right panel deck, sideways front-panel exit and diagonal advancement, reverse reconstruction, rear focus depth, wheel thresholds with boundary release, horizontal swipe/drag, keyboard arrows/Home/End, arrow controls and circular pagination. GSAP loads as the stack approaches the viewport; CSS preserves the finite deck without motion when that engine is unavailable. No global wheel trapping.
-- `sections/`: Hero, Selected Work, About and Contact. Mobile uses native document flow instead of the desktop spatial transition.
+The homepage is server-rendered. Static sections (`sections/`, `Header`, `Footer`) ship no JavaScript; four small client islands add behaviour:
+
+- `components/ExperienceController.tsx`: section navigation, `aria-current`, deferred rendering and *when* motion loads. Motion loads after the first paint when the browser is idle, or earlier on the first scroll gesture; navigation never waits for it. It also renders the off-screen scenes (`.defer-render`) before anything depends on exact geometry.
+- `components/OpticalLens.tsx`: a small circular window translated by the compositor over a pre-scaled hero copy. No clip-path, no DOM queries or style recalculation per frame; the loop runs only while the pointer moves inside the hero and stops when it settles. Fine pointers on the spatial layout only; never under reduced motion.
+- `components/ProjectStack.tsx`: the layered deck. Plane geometry (`lib/deck.ts`) is in percentages of the card, so resizes and rotation never need measuring. Phones get a native scroll-snap rail with a visible next card; tablets and short landscape get a compact deck; the spatial layout keeps the full diagonal deck. Wheel input is claimed only while the pinned Work scene shows and is released at the first and last project; horizontal swipes are taken only when they clearly dominate.
+- `components/ContactScene.tsx` + `ContactForm.tsx`: the enquiry/success state and the Web3Forms submission (validation, honeypot, lock, timeout/abort, focus handling).
+
+Motion (`animations/`):
+
+- `config.ts`: the single source for media queries (`stageQuery`, `railQuery`), duration and easing tokens.
+- `experience.ts`: one `gsap.matchMedia` context for the pinned hero → work stage, its departure into About, and section motion. Creation is all-or-nothing, so a failure can never leave the page half-enhanced. The stage's scroll length is reserved by CSS from the first paint, so enabling it never moves content.
+- `sections.ts`: About and Contact reveals as a few coordinated timelines. Reveals use opacity, never visibility, so content stays keyboard-reachable.
+
+Responsive system (`styles/globals.css`): Tailwind v4 owns layout. Breakpoints `xs 360 · sm 600 · md 900 · lg 1100 · xl 1440 · 2xl 1800`, plus shape variants: `stage` (≥ 900 × 600 and landscape: the spatial layout; everything else uses native document flow), `short` (landscape under 600 px tall) and `coarse` (touch). Colour, type, easing and spacing tokens live in `@theme`.
+
+Specialised visuals (`styles/effects.css`): hero type geometry (both words share one unit derived from the tighter of width and height, so the pair keeps its relationship at any aspect ratio), atmosphere (pre-softened gradients and cached box-shadows, no large blur filters), the lens, deck planes (depth from position and a veil, no blur), clipped display type and form internals. Runtime states such as the pinned stage live in a `states` layer after `utilities`, so they reliably override static classes.
+
+Transform ownership is explicit: GSAP owns the stage elements and cards, the lens owns `.optical-lens`, `.lens-content` and `.atmosphere-drift`, CSS owns card surfaces during departure and hover states. No element is animated by both CSS transitions and GSAP.
+
 - `lib/contact.ts`: shared typed validation and length limits.
-- `components/ContactForm.tsx` and `components/ContactSuccess.tsx`: direct Web3Forms POST, hidden honeypot, loading lock, timeout/abort cleanup and inline failure. Confirmed provider success resolves the whole Contact scene into “MESSAGE / received.” and navigation actions. Success aligns the scene below the fixed header when Contact is visible; a response does not redirect someone browsing another section. Reset focuses the empty name field. Active fields remain visible after viewport/keyboard reflow, and name/email stack across devices. No messages in browser storage. No key means an honest unavailable message, never simulated delivery.
-- `app/work/[slug]/page.tsx`: typed, statically generated project routes with project metadata and media.
-- `styles/globals.css`, `styles/scenes.css` and `postcss.config.mjs`: Tailwind v4 utilities for shared layout, responsive field grids and alignment, alongside layered custom CSS for typography, lens, atmosphere and motion geometry. About and Contact scene styles are isolated from the established Hero/Work geometry. The Tailwind color theme exposes only the monochrome design tokens; the existing green availability indicator remains. No component kit or prebuilt theme.
-- Responsive Tailwind utilities have priority over the layout defaults. Shared `tap-target` and `safe-header` utilities preserve the visible design while adding touch hit areas and notch clearance. The viewport allows zoom, and safe-area insets feed the existing page gutters and footer padding.
-- `public/fonts/`: two self-hosted Instrument families and their SIL Open Font licenses. Runtime pages make no font requests to Google.
+- `app/work/[slug]/page.tsx`: statically generated project pages; unknown slugs return the static 404.
+- `public/fonts/`: Instrument Sans and Instrument Serif Italic (SIL OFL, licenses included). No runtime font requests leave the site.
+- The availability dot is monochrome and inverts with the header.
 
 ## Security and validation
 

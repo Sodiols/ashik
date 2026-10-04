@@ -131,10 +131,10 @@ export function ProjectTypeSelect({ value, onChange, error }: Props) {
   }, [active, open, placement.height]);
 
   return (
-    <div className="project-type-select" ref={wrapper} data-open={open}>
+    <div className="relative" ref={wrapper} data-open={open}>
       <button
         id="projectType"
-        className="project-type-trigger flex items-center justify-between gap-4"
+        className="field-control flex touch-manipulation items-center justify-between gap-4 text-left"
         type="button"
         role="combobox"
         ref={trigger}
@@ -149,7 +149,7 @@ export function ProjectTypeSelect({ value, onChange, error }: Props) {
         onClick={() => { if (open) setOpen(false); else showMenu(); }}
         onKeyDown={handleKey}
       >
-        <span className={value ? undefined : "project-type-placeholder"}>{value || "Select a project type"}</span>
+        <span className={`min-w-0 truncate ${value ? "" : "text-muted"}`}>{value || "Select a project type"}</span>
         <svg className="project-type-chevron shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <path d="m3 5 4 4 4-4" stroke="currentColor" strokeWidth="1.2" />
         </svg>
@@ -158,7 +158,7 @@ export function ProjectTypeSelect({ value, onChange, error }: Props) {
       {open && (
         <div
           id="project-type-options"
-          className="project-type-options"
+          className="project-type-options absolute inset-x-0 top-[calc(100%+8px)] z-[1] origin-top touch-pan-y overflow-y-auto border border-line bg-white p-2 data-[side=top]:top-auto data-[side=top]:bottom-[calc(100%+8px)]"
           role="listbox"
           aria-labelledby="project-type-label"
           ref={menu}
@@ -168,7 +168,7 @@ export function ProjectTypeSelect({ value, onChange, error }: Props) {
           {projectTypes.map((type, index) => (
             <div
               id={`project-type-option-${index}`}
-              className="project-type-option flex items-center justify-between gap-4"
+              className="project-type-option relative flex min-h-11 cursor-pointer items-center justify-between gap-4 p-3 text-body leading-[1.4] transition-colors duration-100"
               key={type}
               role="option"
               aria-selected={value === type}
@@ -178,7 +178,7 @@ export function ProjectTypeSelect({ value, onChange, error }: Props) {
               onClick={() => choose(index)}
             >
               <span>{type}</span>
-              <svg className="project-type-check shrink-0" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <svg className="shrink-0" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="1.2" />
               </svg>
             </div>

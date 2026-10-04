@@ -149,6 +149,50 @@ GSAP desktop motion and stack animation are loaded on demand. Mobile uses native
 
 Production response checks confirmed CSP, frame protection, MIME sniffing protection, permissions policy and referrer policy. Production CSP omits `unsafe-eval`; HTTPS upgrade is enabled only when a real HTTPS site origin is configured. The compatible CSP allows inline Next.js scripts and GSAP styles and is not a strict nonce policy. No private keys, databases, analytics or message storage were added.
 
+## Implementation audit and repair — 5 October
+
+A full audit and refactor, preserving the creative direction. Measured on the local production build (Windows, Node 24.16, Chrome stable, Playwright 1.62 browsers, Lighthouse 13.5). Before/after numbers come from the original commit and this revision served side by side and measured interleaved, so both saw the same machine conditions.
+
+### What was found
+
+- First paint was blocked by one very large initial layout (≈2 s at 4× CPU throttling), not by JavaScript. Part of that was the cold Windows font cache resolving the metric-fallback faces; the rest was laying out off-screen scenes.
+- The optical lens restyled a full-viewport clipped layer every frame and queried the DOM per frame (261 style recalculations and 766 ms of layerization in a 2 s pointer trace at 4× CPU).
+- Desktop CLS 0.17: enabling the pinned stage collapsed the atmosphere's container after load.
+- Hero words were positioned by viewport height but sized by width, so they collided on short laptops (1366 × 768). Tablet Work metadata overlapped the deck.
+- Text arrows (← → ↗) are not in Instrument Sans and rendered from different system fonts per platform. The font families were registered as `sans` and `serif`, colliding with CSS generic keywords.
+- Large blur filters on animated surfaces; blurred project cards during movement; CSS and GSAP sharing transforms; 1,659 effective lines of custom CSS with duplicate and empty media queries.
+- Unknown project slugs returned an error shell that only rendered client-side.
+
+### What changed
+
+See the README architecture section. In short: server-rendered sections with four small client islands; motion loads after first paint (idle) or on first scroll intent and never blocks navigation; a compositor-only lens; percent-based deck geometry with a native scroll-snap rail on phones and no animated blur; one `gsap.matchMedia` context; a Tailwind v4 responsive system with `stage`, `flow` and `short` shape variants; custom CSS reduced from 1,659 to 821 effective lines (−51%) with one block per media condition; monochrome availability dot; SVG arrows; a static 404 for unknown slugs; COOP and HSTS (HTTPS only) headers.
+
+### Results
+
+| Measure | Original | This revision |
+| --- | --- | --- |
+| Hero first paint, Lighthouse mobile run (observed, 4× CPU) | 2.46 s | 0.58 s |
+| Speed Index, Lighthouse mobile (median of 6) | 4.0 s | 1.2 s |
+| Total long-task time, mobile load (median) | 860 ms | 689 ms |
+| Lighthouse mobile performance (median of 6, interleaved) | 90 (88–92) | 89 (82–97) |
+| Lighthouse mobile simulated TBT (median) | 221 ms | 316 ms |
+| Lighthouse desktop performance | 92, CLS 0.168 | 100 (×3), CLS 0 |
+| Accessibility / Best practices / SEO (home) | 100 / 100 / 100 | 100 / 100 / 100 |
+| Optical lens at 4× CPU, dropped frames over 2 s | 51 of 68 | 0 of 120 |
+| Deck navigation, p95 frame | 16.9 ms | 16.8 ms |
+
+The simulated mobile TBT is higher even though total main-thread work fell: the hero now paints about 1.8 s earlier, so the same framework evaluation and hydration (unchanged at ≈75 ms unthrottled) fall after first paint, where TBT counts them. Mobile Lighthouse scores on this machine vary by up to 15 points between identical runs. Inline CSS (`experimental.inlineCss`) and Suspense-split hydration were tried and measured; neither helped, and both were reverted.
+
+Frame pacing of the hero → work transition on GPU Chrome improved from p95 40 ms to 13–27 ms on a quiet machine after promoting the two scaled atmosphere shapes and the hero lettering. Later runs while other applications used the GPU were slower for both builds (current 12–14 dropped frames per 2.5 s versus 17–20 for the original).
+
+Project pages score 92–93 mobile and 100 desktop; their SEO score is 66 only because placeholder studies are intentionally `noindex`.
+
+### Browser QA
+
+`scripts/qa-browser.cjs` (24 viewports from 280 × 653 to 2560 × 1440) checks horizontal overflow, header collisions, hero type bounds against the header and metadata, real header navigation and `aria-current`, the front card and controls, next/previous, CDP touch swipes (horizontal advances, vertical scrolls the page), About and Contact text bounds, form width, 16 px controls, validation, the custom dropdown, the success state (Web3Forms intercepted, nothing sent), focus on reset, the footer home link, console errors and failed requests. `scripts/qa-states.cjs` checks portrait ↔ landscape rotation (including tablet crossing between the flow and stage layouts), navigation before motion has loaded, reduced motion, 80–150% zoom, all project routes and the 404.
+
+Earlier matrix runs passed in Edge (all), Firefox (all) and Chrome (all but one intermittent 320 × 568 timing), and WebKit (all but 2560 × 1440 timing in headless software rendering at ~2 fps). Final-run results are recorded below. Issues found and fixed by these runs: reveals hiding fields from keyboard focus, ScrollTrigger refreshes cancelling smooth navigation, early navigation before `load`, Firefox software-rendering cost of the atmosphere, and the success scroll under the header.
+
 ## Remaining launch requirements
 
 1. Supply `NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY` and the final HTTPS `NEXT_PUBLIC_SITE_URL`, then rebuild.

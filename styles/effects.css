@@ -1,0 +1,700 @@
+/*
+  Specialized visual systems only. Ordinary layout and spacing live in the
+  components as Tailwind utilities, which load in a later layer and win.
+
+  Transform ownership
+  - GSAP: .hero-lettering, .hero-visual, .hero-designer, .hero-bottom,
+    .hero-side-note, .atmosphere-light, .atmosphere-shadow, .work-intro,
+    .project-stack, .work-bottom, .work-atmosphere, .project-card (deck),
+    .stack-controls, About/Contact reveal targets.
+  - Optical lens controller: .optical-lens, .lens-content, .atmosphere-drift.
+  - CSS: .project-card-surface (departure), .work-intro > p, hover states.
+*/
+@layer components {
+  .experience {
+    position: relative;
+  }
+  .work-departure {
+    display: contents;
+  }
+  /* Work dissolves into About's white canvas. */
+  .experience::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 24svh;
+    z-index: 10;
+    pointer-events: none;
+    background: linear-gradient(transparent, var(--color-white));
+    opacity: clamp(0, calc(var(--background-exit, 0) * 3), 1);
+  }
+
+  /* Off-screen scenes skip layout and paint until the page is "rendered":
+     ExperienceController sets data-rendered before anything needs exact
+     geometry (first scroll intent, section navigation, motion setup). */
+  :root:not([data-rendered]) .defer-render {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto var(--render-estimate, 100svh);
+  }
+
+  /* ── Hero typography geometry ──────────────────────────────────────────
+     Both words share one unit, so their relationship never changes; the pair
+     is placed as a block. Phone portrait stacks two lines, tablet portrait
+     keeps the asymmetry, landscape uses the offset desktop composition,
+     scaled by whichever of width or height is tighter. */
+  .hero-frame {
+    --u: 1vw;
+    --visual: calc(var(--u) * 37);
+    --designer: calc(var(--u) * 20.5);
+    --step: calc(var(--u) * 40);
+    --block: calc(var(--step) + var(--designer));
+    --hero-top: max(
+      calc(var(--header-offset) + 2.5rem),
+      calc((100% - var(--block)) * 0.47)
+    );
+  }
+  .hero-type {
+    position: absolute;
+    top: var(--hero-top);
+    left: 7vw;
+    right: 7vw;
+    height: var(--block);
+  }
+  .hero-visual,
+  .hero-designer {
+    position: absolute;
+    line-height: 1;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  .hero-visual {
+    top: 0;
+    left: 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: var(--visual);
+    letter-spacing: -0.062em;
+  }
+  .hero-designer {
+    top: var(--step);
+    right: 0;
+    font-size: var(--designer);
+    letter-spacing: -0.085em;
+  }
+  .hero-side-note {
+    top: calc(var(--header-offset) + 2rem);
+    writing-mode: vertical-rl;
+  }
+
+  /* ── Atmosphere ────────────────────────────────────────────────────────
+     Pre-softened gradients instead of large blur filters, so moving or
+     scaling these surfaces never re-rasterizes a blur. */
+  .atmosphere {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 100svh;
+    overflow: hidden;
+    contain: strict;
+    pointer-events: none;
+    background: var(--color-white);
+    opacity: clamp(0, calc(1 - var(--background-exit, 0) * 2.4), 1);
+  }
+  .atmosphere-drift {
+    position: absolute;
+    inset: -2%;
+  }
+  /* A soft rotated frame: equal outer and inset spreads meet at the edge, so
+     the band has no seam. Box-shadow blurs are rasterized once and cached. */
+  .atmosphere-shadow {
+    --band: clamp(35px, 7vw, 180px);
+    --soft: clamp(70px, 8vw, 130px);
+    --tone: rgb(0 0 0 / 0.075);
+    position: absolute;
+    width: 65%;
+    height: 110%;
+    right: 4%;
+    top: -15%;
+    border-radius: 2%;
+    transform: rotate(-32deg);
+    box-shadow:
+      0 0 var(--soft) calc(var(--band) / 2) var(--tone),
+      inset 0 0 var(--soft) calc(var(--band) / 2) var(--tone);
+  }
+  .atmosphere-light {
+    position: absolute;
+    width: 55%;
+    height: 130%;
+    left: 3%;
+    top: -25%;
+    transform: rotate(17deg);
+    background: linear-gradient(
+      105deg,
+      transparent 28%,
+      rgb(0 0 0 / 0.05) 45%,
+      rgb(255 255 255 / 0.95) 56%,
+      transparent 72%
+    );
+  }
+  .atmosphere-fine {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      0deg,
+      var(--color-white),
+      transparent 25%,
+      transparent 75%,
+      rgb(255 255 255 / 0.7)
+    );
+  }
+  /* GSAP scales these during the stage transition. As their own layers the
+     compositor scales the cached soft raster instead of re-blurring it each
+     frame (measured: ~25 fps → 60+ fps on GPU Chrome). */
+  /* GSAP owns the element (entry); CSS owns ::before (exit into About). */
+  .work-atmosphere {
+    position: absolute;
+    inset: -15%;
+    z-index: -1;
+    pointer-events: none;
+  }
+  .work-atmosphere::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 75% 34%, #d2d2d2, rgb(210 210 210 / 0) 54%),
+      radial-gradient(ellipse at 28% 45%, #efefef, rgb(239 239 239 / 0) 50%),
+      radial-gradient(ellipse at 70% 90%, #a8a8a8, rgb(168 168 168 / 0) 48%),
+      radial-gradient(ellipse at 8% 88%, #dedede, rgb(222 222 222 / 0) 44%);
+    opacity: clamp(0, calc(1 - var(--background-exit, 0) * 2.4), 1);
+  }
+  .about-light,
+  .contact-light {
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+  }
+  .about-light {
+    width: 125%;
+    height: 60%;
+    top: 8%;
+    left: -15%;
+    background: linear-gradient(128deg, transparent 28%, #f1f1f1 47%, var(--color-light) 56%, transparent 70%);
+    mask-image: linear-gradient(transparent, #000 25%, #000 65%, transparent);
+  }
+  .contact-light {
+    inset: 0;
+    background: radial-gradient(ellipse at 90% 35%, #f7f7f7, transparent 55%);
+  }
+
+  /* ── Optical lens ──────────────────────────────────────────────────────
+     A small circular window translated by the compositor. Its content is a
+     static, pre-scaled copy of the hero, counter-translated each frame, so
+     pointer movement never repaints a full-viewport layer. */
+  .optical-lens {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 20;
+    display: none;
+    overflow: hidden;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--motion-fast) linear;
+    will-change: transform, opacity;
+  }
+  .optical-lens::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid rgb(0 0 0 / 0.2);
+    box-shadow: inset 0 0 13px rgb(0 0 0 / 0.065);
+  }
+  .lens-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100svh;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  /* ── Project deck ──────────────────────────────────────────────────────
+     Depth comes from position, layering and a veil, never animated blur.
+     lib/deck.ts uses the same steps when GSAP drives the planes. */
+  .project-stack {
+    --step-x: 7%;
+    --step-y: -11%;
+  }
+  .project-card {
+    --depth: clamp(0, var(--rank), 3);
+    position: absolute;
+    inset: 0;
+    transform: translate(
+      calc(var(--depth) * var(--step-x)),
+      calc(var(--depth) * var(--step-y))
+    );
+    z-index: calc(10 - var(--rank));
+  }
+  .project-card[data-visible="false"] {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .project-card[data-visible="true"] {
+    will-change: transform;
+  }
+  .project-card-surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--color-white);
+    opacity: calc(clamp(0, var(--rank), 2) * 0.09);
+    transition: opacity var(--motion-panel) var(--ease);
+  }
+  .project-art-link img {
+    transition: transform 600ms var(--ease);
+  }
+  /* Phones: a native scroll-snap rail, no plane transforms. */
+  /* ── Clipped display typography ────────────────────────────────────── */
+  .title-line {
+    display: block;
+    overflow: clip;
+    padding: 0.15em 0.06em 0.2em;
+    margin: -0.15em -0.06em -0.2em;
+  }
+  .title-word {
+    display: inline-block;
+    white-space: nowrap;
+    transform-origin: 50% 100%;
+  }
+  .title-character {
+    display: inline-block;
+  }
+  .title-space {
+    width: 0.22em;
+  }
+  .copy-line {
+    display: block;
+    overflow: clip;
+    padding-bottom: 0.12em;
+    margin-bottom: -0.12em;
+  }
+  .copy-line > span {
+    display: inline-block;
+  }
+  .work-statement em {
+    font-size: 1.2em;
+    line-height: 0;
+    letter-spacing: -0.035em;
+  }
+
+  /* About title: the serif line sits offset beneath the sans line. */
+  .about-title .title-line-serif {
+    margin-top: 0.13em;
+    margin-left: 15%;
+    font-size: 1.27em;
+    letter-spacing: -0.065em;
+  }
+
+  /* Contact title: LET’S / create / TOGETHER. */
+  .contact-line-create {
+    font-size: 1.52em;
+    line-height: 0.92;
+    margin-left: 14%;
+    margin-top: 0.015em;
+    letter-spacing: -0.065em;
+  }
+  .contact-line-together {
+    font-size: 0.68em;
+    margin-top: 0.3em;
+    letter-spacing: -0.06em;
+  }
+  .success-title .title-line-serif {
+    font-size: 1.45em;
+    margin-left: 8%;
+    letter-spacing: -0.05em;
+  }
+
+  /* ── Disciplines ───────────────────────────────────────────────────── */
+  .discipline-list li {
+    position: relative;
+  }
+  .discipline-list li::before,
+  .discipline-list li::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    background: var(--color-line);
+    transform: scaleX(var(--rule-progress, 1));
+    transform-origin: left center;
+  }
+  .discipline-list li::after {
+    background: var(--color-ink);
+    transform: scaleX(0);
+    transition: transform var(--motion-ui) var(--ease);
+  }
+  .discipline-name {
+    display: inline-block;
+    transition: translate var(--motion-ui) var(--ease);
+  }
+  .discipline-resolution {
+    display: inline-block;
+  }
+  .discipline-arrow {
+    transition:
+      transform var(--motion-ui) var(--ease),
+      color var(--motion-ui);
+  }
+  .discipline-watermark {
+    transition: translate var(--motion-ui) var(--ease);
+  }
+
+  /* ── Contact prompt ────────────────────────────────────────────────── */
+  .contact-arrow {
+    transition:
+      background-color var(--motion-ui),
+      color var(--motion-ui);
+  }
+  .contact-arrow-ring {
+    position: absolute;
+    inset: -6px;
+    width: calc(100% + 12px);
+    height: calc(100% + 12px);
+    overflow: visible;
+    pointer-events: none;
+    color: #8a8a8a;
+  }
+  .connection-stroke {
+    stroke: currentColor;
+    stroke-width: 1;
+    stroke-linecap: round;
+  }
+  .connection-dot {
+    fill: currentColor;
+  }
+  .contact-arrow-glyph {
+    transition: transform var(--motion-ui) var(--ease);
+  }
+  .contact-arrow-echo {
+    position: absolute;
+    inset: 0;
+    transform: translate(-100%, 100%);
+  }
+  .contact-arrow:focus-visible {
+    background: var(--color-ink);
+    color: var(--color-white);
+  }
+  .contact-arrow:focus-visible .contact-arrow-glyph {
+    transform: translate(100%, -100%);
+  }
+  .contact-arrow:focus-visible .contact-arrow-echo {
+    transform: none;
+  }
+
+  /* ── Form controls ─────────────────────────────────────────────────── */
+  .field-control {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    border-bottom: 1px solid var(--color-line);
+    border-radius: 0;
+    background: transparent;
+    padding: 9px 0 13px;
+    font-size: var(--text-field);
+    line-height: 1.4;
+    outline: none;
+    transition: border-color var(--motion-fast);
+  }
+  .field-control::placeholder {
+    color: var(--color-soft);
+    opacity: 1;
+  }
+  .field-control:focus,
+  .field-control[aria-expanded="true"] {
+    border-color: var(--color-ink);
+  }
+  textarea.field-control {
+    resize: vertical;
+    min-height: 95px;
+    max-height: 350px;
+  }
+  .project-type-chevron {
+    transition: transform var(--motion-ui) var(--ease);
+  }
+  [aria-expanded="true"] > .project-type-chevron {
+    transform: rotate(180deg);
+  }
+  .project-type-options {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    box-shadow: 0 14px 36px rgb(0 0 0 / 0.08);
+    animation: menu-entry 180ms var(--ease);
+  }
+  .project-type-options[data-side="top"] {
+    transform-origin: bottom center;
+  }
+  .project-type-option + .project-type-option {
+    border-top: 1px solid var(--color-line);
+  }
+  .project-type-option[data-active="true"] {
+    color: var(--color-white);
+    background: var(--color-ink);
+  }
+  .project-type-option[aria-selected="false"] > svg {
+    opacity: 0;
+  }
+  @keyframes menu-entry {
+    from {
+      opacity: 0;
+      transform: scaleY(0.96);
+    }
+  }
+  .send-button {
+    transition: gap var(--motion-fast) var(--ease);
+  }
+  .contact-success {
+    animation: contact-resolution 700ms var(--ease) both;
+  }
+  @keyframes contact-resolution {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+  }
+
+  /* ── Header ────────────────────────────────────────────────────────── */
+  .header nav a::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--motion-ui) var(--ease);
+  }
+  .header nav a[aria-current]::after {
+    transform: scaleX(1);
+  }
+  .hero-work-link > svg {
+    transition: transform var(--motion-fast) var(--ease);
+  }
+
+  /* ── Responsive ────────────────────────────────────────────────────────
+     One block per condition. Width tiers match the Tailwind breakpoints;
+     the spatial stage matches the `stage` variant and animations/config.ts. */
+  @media (max-width: 599.98px) {
+    .atmosphere-shadow {
+      width: 112%;
+      height: 82%;
+      top: 15%;
+      right: -26%;
+    }
+    .atmosphere-light {
+      width: 100%;
+      left: -10%;
+    }
+    .project-card {
+      position: relative;
+      inset: auto;
+      transform: none;
+      z-index: auto;
+    }
+    .project-card[data-visible] {
+      opacity: 1;
+      visibility: visible;
+      will-change: auto;
+    }
+    .project-card-surface::after {
+      opacity: 0;
+    }
+  }
+  @media (min-width: 600px) {
+    .hero-frame {
+      --visual: calc(var(--u) * 30);
+      --designer: calc(var(--u) * 19.6);
+      --step: calc(var(--u) * 30.6);
+    }
+    .about-title .title-line-serif {
+      margin-top: 0.06em;
+      margin-left: 29%;
+      font-size: 1.12em;
+    }
+  }
+  @media (min-width: 900px) {
+    .success-title .title-line-serif {
+      font-size: 1.48em;
+      margin-left: 21%;
+    }
+  }
+  @media (min-width: 1100px) {
+    .contact-line-create {
+      font-size: 1.6em;
+      margin-left: 0.04em;
+    }
+  }
+  /* Landscape: the offset desktop composition, sized by the tighter axis. */
+  @media (min-aspect-ratio: 6/5) {
+    .hero-frame {
+      --u: min(1vw, 1.6svh, 24px);
+      --visual: calc(var(--u) * 20.8);
+      --designer: calc(var(--u) * 17.6);
+      --step: calc(var(--u) * 15);
+      --hero-top: max(
+        calc(var(--header-offset) + 1.5rem),
+        calc((100% - var(--block)) * 0.46)
+      );
+    }
+    .hero-type {
+      right: auto;
+      width: calc(var(--u) * 85.4);
+      left: max(var(--gutter), calc((100% - var(--u) * 85.4) * 0.58));
+    }
+    .hero-side-note {
+      top: calc(var(--hero-top) + var(--u) * 2);
+    }
+  }
+  @media (orientation: landscape) and (max-height: 599px) {
+    .hero-frame {
+      --u: min(1vw, 1.45svh);
+    }
+  }
+  /* Work only defers in the flow layout; on the stage it is the pinned scene. */
+  @media not all and (min-width: 900px) and (min-height: 600px) and (min-aspect-ratio: 6/5) {
+    :root:not([data-rendered]) .defer-render-flow {
+      content-visibility: auto;
+      contain-intrinsic-block-size: auto var(--render-estimate, 100svh);
+    }
+  }
+  @media (min-width: 900px) and (min-height: 600px) and (min-aspect-ratio: 6/5) {
+    .project-stack {
+      --step-x: 12%;
+      --step-y: -16.2%;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .experience .atmosphere-shadow,
+      .experience .atmosphere-light {
+        will-change: transform;
+      }
+      @media (hover: hover) and (pointer: fine) {
+        .optical-lens {
+          display: block;
+        }
+      }
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .project-art-link:hover img {
+      transform: scale(1.018);
+    }
+    .project-art-link:hover .view-project {
+      background: var(--color-white);
+      color: var(--color-ink);
+    }
+    .discipline-list li:hover::after {
+      transform: scaleX(1);
+    }
+    .discipline-list li:hover .discipline-name {
+      translate: 10px 0;
+    }
+    .discipline-list li:hover .discipline-arrow {
+      transform: rotate(45deg);
+      color: var(--color-ink);
+    }
+    .discipline-list:has(li:hover) .discipline-watermark {
+      translate: -10px 0;
+    }
+    .contact-arrow:hover {
+      background: var(--color-ink);
+      color: var(--color-white);
+    }
+    .contact-arrow:hover .contact-arrow-glyph {
+      transform: translate(100%, -100%);
+    }
+    .contact-arrow:hover .contact-arrow-echo {
+      transform: none;
+    }
+    .send-button:hover:not(:disabled) {
+      gap: 3rem;
+    }
+    .header nav a:hover::after {
+      transform: scaleX(1);
+    }
+    .hero-work-link:hover > svg {
+      transform: translateY(5px);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .discipline-name,
+    .discipline-watermark {
+      translate: none !important;
+    }
+  }
+}
+
+/*
+  Runtime states set by the motion controllers. This layer follows
+  `utilities`, so a state such as the pinned stage reliably overrides the
+  static layout classes on the same elements.
+*/
+@layer states {
+  /* ── Pinned stage (data-enhanced) ── */
+  .experience[data-enhanced] {
+    height: 230svh;
+  }
+  .experience[data-enhanced] .visual-stage {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    overflow: hidden;
+  }
+  .experience[data-enhanced] .hero,
+  .experience[data-enhanced] .work-departure {
+    display: block;
+    position: absolute;
+    inset: 0;
+  }
+  /* Rasterized once at rest (scale 1, crisp); the compositor scales it while
+     it leaves, instead of re-rasterizing huge type every frame. */
+  .experience[data-enhanced] .hero-lettering {
+    will-change: transform;
+  }
+  /* The overlay must not swallow hero pointer events (optical lens). */
+  .experience[data-enhanced] .work-departure {
+    pointer-events: none;
+  }
+  .experience[data-enhanced] .selected-work {
+    position: absolute;
+    inset: 0;
+    visibility: hidden;
+    pointer-events: auto;
+    background: transparent;
+  }
+  /* Rear planes leave first as About arrives. */
+  .experience[data-enhanced] .project-card-surface {
+    --plane-delay: calc(0.24 - clamp(0, var(--rank), 2) * 0.08);
+    --plane-exit: clamp(0, calc((var(--work-exit, 0) - var(--plane-delay)) * 1.6), 1);
+    transform: translate3d(
+      calc(var(--plane-exit) * 58vw),
+      calc(var(--plane-exit) * -42svh),
+      0
+    );
+  }
+  .experience[data-enhanced] .work-intro > p {
+    transform: translate3d(calc(var(--intro-exit, 0) * -5vw), 0, 0);
+  }
+
+}

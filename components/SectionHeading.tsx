@@ -1,13 +1,21 @@
-type SectionHeadingProps = { id: string; first: string; second: string };
+type SectionHeadingProps = {
+  id: string;
+  first: string;
+  second: string;
+  className?: string;
+};
 
-export function SectionHeading({ id, first, second }: SectionHeadingProps) {
+export function SectionHeading({ id, first, second, className = "" }: SectionHeadingProps) {
   return (
-    <h2 id={id} aria-label={`${first} ${second}`}>
+    <h2 id={id} className={className} aria-label={`${first} ${second}`}>
       <span className="title-line" aria-hidden="true">
         <span className="title-word">
           {Array.from(first).map((letter, index) => (
-            <span className={letter === " " ? "title-character title-space" : "title-character"} key={index}>
-              {letter === " " ? "\u00a0" : letter}
+            <span
+              className={letter === " " ? "title-character title-space" : "title-character"}
+              key={index}
+            >
+              {letter === " " ? " " : letter}
             </span>
           ))}
         </span>
